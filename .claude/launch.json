@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Web (apps/web)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=apps/web"],
+      "port": 3000
+    },
+    {
+      "name": "Turbo Dev (todos os apps)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "BullMQ Workers",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "apps/web/lib/queue/workers.ts"],
+      "port": 0
+    },
+    {
+      "name": "Prisma Studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "db:studio", "--workspace=packages/database"],
+      "port": 5555
+    }
+  ]
+}

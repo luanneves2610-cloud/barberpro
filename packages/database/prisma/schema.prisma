@@ -1,0 +1,433 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Plan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  ATTENDANT
+  BARBER
+  CLIENT
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  PIX
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+}
+
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CANCELLED
+  PAYMENT_RECEIVED
+  SYSTEM
+}
+
+// ============================================================
+// TENANTS
+// ============================================================
+
+model Tenant {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  logo_url  String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  plan         Plan         @default(BASIC)
+  status       TenantStatus @default(ACTIVE)
+  monthly_goal Decimal?     @db.Decimal(10, 2)
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+
+  profiles        Profile[]
+  barbers         Barber[]
+  services        Service[]
+  clients         Client[]
+  appointments    Appointment[]
+  products        Product[]
+  transactions    Transaction[]
+  expenses        Expense[]
+  subscriptions   Subscription[]
+  notifications   Notification[]
+  barberSchedules BarberSchedule[]
+  barberBreaks    BarberBreak[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// PROFILES (usuários do painel web: owner, attendant)
+// ============================================================
+
+model Profile {
+  id         String   @id @default(cuid())
+  tenant_id  String
+  user_id    String   @unique // Supabase Auth UID
+  role       Role     @default(ATTENDANT)
+  name       String
+  email      String
+  phone      String?
+  avatar_url String?
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@map("profiles")
+}
+
+// ============================================================
+// BARBERS
+// ============================================================
+
+model Barber {
+  id             String  @id @default(cuid())
+  tenant_id      String
+  name           String
+  email          String?
+  phone          String?
+  avatar_url     String?
+  bio            String?
+  commission_pct Decimal @default(0) @db.Decimal(5, 2)
+  rating         Decimal @default(0) @db.Decimal(3, 2)
+  is_active      Boolean @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  schedules    BarberSchedule[]
+  breaks       BarberBreak[]
+
+  @@index([tenant_id])
+  @@map("barbers")
+}
+
+// ============================================================
+// BARBER SCHEDULES (horários de trabalho por dia da semana)
+// ============================================================
+
+model BarberSchedule {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  barber_id   String
+  day_of_week Int     // 0=Dom, 1=Seg, ..., 6=Sab
+  start_time  String  // "08:00"
+  end_time    String  // "18:00"
+  is_active   Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  barber Barber @relation(fields: [barber_id], references: [id], onDelete: Cascade)
+
+  @@unique([barber_id, day_of_week])
+  @@index([tenant_id])
+  @@map("barber_schedules")
+}
+
+// ============================================================
+// BARBER BREAKS (folgas e pausas)
+// ============================================================
+
+model BarberBreak {
+  id         String   @id @default(cuid())
+  tenant_id  String
+  barber_id  String
+  date       DateTime @db.Date
+  start_time String
+  end_time   String
+  reason     String?
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  barber Barber @relation(fields: [barber_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([barber_id, date])
+  @@map("barber_breaks")
+}
+
+// ============================================================
+// SERVICES
+// ============================================================
+
+model Service {
+  id          String   @id @default(cuid())
+  tenant_id   String
+  name        String
+  description String?
+  duration    Int      // minutos
+  price       Decimal  @db.Decimal(10, 2)
+  icon        String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([tenant_id])
+  @@map("services")
+}
+
+// ============================================================
+// CLIENTS
+// ============================================================
+
+model Client {
+  id         String    @id @default(cuid())
+  tenant_id  String
+  user_id    String?   // Se tem conta no app mobile
+  name       String
+  email      String?
+  phone      String?
+  birth_date DateTime? @db.Date
+  avatar_url String?
+  notes      String?
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, phone])
+  @@map("clients")
+}
+
+// ============================================================
+// APPOINTMENTS
+// ============================================================
+
+model Appointment {
+  id             String            @id @default(cuid())
+  tenant_id      String
+  client_id      String
+  barber_id      String
+  service_id     String
+  date           DateTime          @db.Date
+  start_time     String            // "09:00"
+  end_time       String            // "09:30"
+  status         AppointmentStatus @default(SCHEDULED)
+  payment_method PaymentMethod?
+  payment_status PaymentStatus     @default(PENDING)
+  price          Decimal           @db.Decimal(10, 2)
+  notes                String?
+  rating               Float?
+  rating_comment       String?
+  recurrence_group_id  String?
+  confirmed_at         DateTime?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [client_id], references: [id])
+  barber       Barber        @relation(fields: [barber_id], references: [id])
+  service      Service       @relation(fields: [service_id], references: [id])
+  transactions Transaction[]
+  productSales ProductSale[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, date])
+  @@index([tenant_id, barber_id, date])
+  @@index([tenant_id, client_id])
+  @@index([tenant_id, recurrence_group_id])
+  @@map("appointments")
+}
+
+// ============================================================
+// PRODUCTS
+// ============================================================
+
+model Product {
+  id          String   @id @default(cuid())
+  tenant_id   String
+  name        String
+  category    String?
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  cost        Decimal? @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  min_stock   Int      @default(5)
+  image_url   String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  productSales ProductSale[]
+
+  @@index([tenant_id])
+  @@map("products")
+}
+
+// ============================================================
+// PRODUCT SALES
+// ============================================================
+
+model ProductSale {
+  id             String   @id @default(cuid())
+  tenant_id      String
+  appointment_id String?
+  product_id     String
+  quantity       Int      @default(1)
+  unit_price     Decimal  @db.Decimal(10, 2)
+  total          Decimal  @db.Decimal(10, 2)
+  sold_at        DateTime @default(now())
+
+  appointment Appointment? @relation(fields: [appointment_id], references: [id])
+  product     Product      @relation(fields: [product_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, sold_at])
+  @@map("product_sales")
+}
+
+// ============================================================
+// TRANSACTIONS (caixa geral)
+// ============================================================
+
+model Transaction {
+  id             String          @id @default(cuid())
+  tenant_id      String
+  appointment_id String?
+  type           TransactionType
+  category       String?
+  description    String?
+  amount         Decimal         @db.Decimal(10, 2)
+  payment_method PaymentMethod?
+  date           DateTime        @db.Date
+  created_at     DateTime        @default(now())
+
+  tenant      Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointment_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, date])
+  @@map("transactions")
+}
+
+// ============================================================
+// EXPENSES (despesas da barbearia)
+// ============================================================
+
+model Expense {
+  id          String   @id @default(cuid())
+  tenant_id   String
+  category    String
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  date        DateTime @db.Date
+  created_at  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([tenant_id, date])
+  @@map("expenses")
+}
+
+// ============================================================
+// SUBSCRIPTIONS (planos SaaS)
+// ============================================================
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  tenant_id            String
+  plan                 Plan
+  status               SubscriptionStatus @default(ACTIVE)
+  price                Decimal            @db.Decimal(10, 2)
+  billing_cycle        String             @default("MONTHLY")
+  started_at           DateTime           @default(now())
+  ends_at              DateTime?
+  trial_ends_at        DateTime?
+  mercadopago_id       String?
+  mercadopago_payer_id String?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("subscriptions")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id         String           @id @default(cuid())
+  tenant_id  String
+  profile_id String?
+  title      String
+  body       String
+  type       NotificationType
+  is_read    Boolean          @default(false)
+  data       Json?
+  created_at DateTime         @default(now())
+
+  tenant  Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [profile_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([profile_id, is_read])
+  @@map("notifications")
+}
