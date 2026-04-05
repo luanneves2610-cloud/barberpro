@@ -70,13 +70,7 @@ const nextConfig = {
 
   // Redirects
   async redirects() {
-    return [
-      {
-        source: '/admin',
-        destination: '/admin',
-        permanent: false,
-      },
-    ]
+    return []
   },
 
   // Logging
