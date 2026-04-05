@@ -28,7 +28,7 @@ export default async function AdminDashboard() {
     }),
   ])
 
-  const planMap = Object.fromEntries(planCounts.map((p) => [p.plan, p._count]))
+  const planMap = Object.fromEntries(planCounts.map((p: { plan: string; _count: number }) => [p.plan, p._count]))
 
   return (
     <div className="space-y-6">
